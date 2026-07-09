@@ -1,48 +1,24 @@
 /**
- * Express Application Configuration
+ * Server Entry Point
  *
- * This module sets up the Express application and registers all API routes.
- * It is intentionally decoupled from the server binding logic (e.g., app.listen)
- * to allow isolated, collision-free unit testing using Supertest.
+ * This module is strictly responsible for binding the configured Express application
+ * to a network port and starting the HTTP server.
+ *
+ * By isolating the network binding from the application configuration (app.js),
+ * we ensure the application can be cleanly imported into test suites (like Jest & Supertest)
+ * without triggering EADDRINUSE (Address already in use) port collisions during automated CI/CD runs.
  */
-const express = require('express')
-const rateLimiter = require('./rateLimiter')
-
-const app = express()
-
-// Middleware to automatically parse incoming JSON payloads
-app.use(express.json())
+const app = require('./app')
 
 // ==========================================
-// API Routes & Rate Limit Policies
+// Server Initialization
 // ==========================================
 
-/**
- * General Purpose Endpoint
- * Limit Policy: 20 requests per 60 seconds (1 minute)
- * Use Case: Standard, low-impact data retrieval.
- */
-app.get('/api/general', rateLimiter(20, 60), (req, res) => {
-  res.json({ message: 'OK' })
-})
+// Define the server port, prioritizing environment variables for production
+// deployments (e.g., AWS, Heroku, Docker) and defaulting to 3000 for local development.
+const SERVER_PORT = process.env.PORT || 3000
 
-/**
- * Data Submission Endpoint
- * Limit Policy: 5 requests per 60 seconds (1 minute)
- * Use Case: Restrictive limits for resource-heavy operations like form submissions.
- */
-app.post('/api/submit', rateLimiter(5, 60), (req, res) => {
-  res.json({ message: 'OK' })
+// Bind the application to the specified port and begin listening for incoming connections
+app.listen(SERVER_PORT, () => {
+  console.log(`🚀 Rate Limiter API running successfully on port ${SERVER_PORT}`)
 })
-
-/**
- * System Status Endpoint
- * Limit Policy: 60 requests per 60 seconds (1 minute)
- * Use Case: Higher allowance for frequent health checks or client status polling.
- */
-app.get('/api/status', rateLimiter(60, 60), (req, res) => {
-  res.json({ message: 'OK' })
-})
-
-// Export the fully configured application instance
-module.exports = app

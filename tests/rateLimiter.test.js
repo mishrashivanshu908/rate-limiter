@@ -7,8 +7,8 @@
  * down the test runner.
  */
 const request = require('supertest')
-const app = require('../src/server')
-const rateLimiter = require('../src/rateLimiter')
+const app = require('../src/app') 
+const rateLimiter = require('../src/middleware/rateLimiter')
 
 // Hijack global timers to allow instant fast-forwarding of time
 jest.useFakeTimers()
