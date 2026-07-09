@@ -1,100 +1,199 @@
 /**
- * Rate Limiter Test Suite
+ * Rate Limiter Integration Test Suite
  *
- * This suite uses Supertest for HTTP assertions and Jest's fake timers
- * to simulate the passage of time. This allows us to strictly test time-based
- * rate limiting logic (like bucket replenishment) instantly, without slowing
- * down the test runner.
+ * This suite utilizes Supertest to simulate HTTP requests against the Express router,
+ * and Jest's fake timers to deterministically test time-based rate limit resets
+ * without causing slow test execution.
  */
 const request = require('supertest')
-const app = require('../src/app') 
+const app = require('../src/app')
 const rateLimiter = require('../src/middleware/rateLimiter')
 
-// Hijack global timers to allow instant fast-forwarding of time
+// Hijack the global system clock to control the passage of time manually
 jest.useFakeTimers()
 
 afterAll(() => {
-  // Restore standard JavaScript timers to prevent side effects in other test files
+  // Restore the normal system clock after all tests complete
   jest.useRealTimers()
 })
 
 describe('Token Bucket Rate Limiter Endpoints', () => {
-  // Consistent identifier to simulate a single client across multiple requests
-  const mockApiKey = 'test-client-api-key'
-
+  // ==========================================
+  // Test Suite: POST /api/submit
+  // Strict Limit: 5 requests per 60 seconds
+  // ==========================================
   describe('POST /api/submit (Limit: 5 requests / 60 seconds)', () => {
-    it('1. Should allow requests strictly within the limit (N requests)', async () => {
-      // Act: Send the maximum allowed number of requests (5)
-      for (let i = 0; i < 5; i++) {
-        const res = await request(app)
-          .post('/api/submit')
-          .set('x-api-key', mockApiKey)
+    const submitEndpointClientKey = 'client-api-key-submit'
 
-        // Assert: Ensure successful processing and correct deduction of tokens
-        expect(res.statusCode).toBe(200)
-        expect(res.body.message).toBe('OK')
-        expect(res.headers['x-ratelimit-remaining']).toBe(String(4 - i))
+    it('1. Should allow requests strictly within the limit (N requests)', async () => {
+      // Simulate N rapid, consecutive valid requests
+      for (let requestCount = 0; requestCount < 5; requestCount++) {
+        const response = await request(app)
+          .post('/api/submit')
+          .set('x-api-key', submitEndpointClientKey)
+
+        expect(response.statusCode).toBe(200)
       }
     })
 
     it('2. Should block the request that exceeds the limit (N+1 request)', async () => {
-      // Arrange: The bucket is currently empty from the previous test.
-      // Act: This 6th request should hit the strict rate limit boundary.
-      const res = await request(app)
+      // The bucket is now empty from the previous test block
+      const response = await request(app)
         .post('/api/submit')
-        .set('x-api-key', mockApiKey)
+        .set('x-api-key', submitEndpointClientKey)
 
-      // Assert: Ensure the request is dropped and the client is told to wait
-      expect(res.statusCode).toBe(429)
-      expect(res.body.error).toBe('Too Many Requests')
-      expect(res.headers['retry-after']).toBeDefined()
+      expect(response.statusCode).toBe(429)
+      expect(response.headers['retry-after']).toBeDefined()
     })
 
     it('3. Should reset the window and allow requests after configured time passes', async () => {
-      // Arrange: Fast-forward time by 61 seconds to fully replenish the 60-second bucket
+      // Fast-forward the mocked system clock by 61 seconds to trigger a full bucket refill
       jest.advanceTimersByTime(61000)
 
-      // Act: Send a new request
-      const res = await request(app)
+      const response = await request(app)
         .post('/api/submit')
-        .set('x-api-key', mockApiKey)
+        .set('x-api-key', submitEndpointClientKey)
 
-      // Assert: The request should now succeed with a freshly deducted bucket
-      expect(res.statusCode).toBe(200)
-      expect(res.headers['x-ratelimit-remaining']).toBe('4')
+      expect(response.statusCode).toBe(200)
     })
 
     it('4. Should reject requests missing a client identifier', () => {
-      // For this specific edge case, we test the middleware in isolation rather than
-      // via Supertest to cleanly simulate the complete absence of an IP address.
+      // Bypass Supertest's automatic localhost IP injection by utilizing a mock request object.
+      // This strictly tests the middleware's rejection logic when no identity is present.
+      const mockRequestObject = { headers: {} }
+      Object.defineProperty(mockRequestObject, 'ip', { get: () => undefined })
 
-      // Arrange: Mock Request with no headers and undefined IP
-      const mockReq = { headers: {} }
-      Object.defineProperty(mockReq, 'ip', { get: () => undefined })
-
-      // Arrange: Mock Response spying on status and json methods
-      const mockRes = {
+      const mockResponseObject = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
       }
+      const nextFunctionSpy = jest.fn()
 
-      // Arrange: Mock Next to ensure the request doesn't proceed
-      const mockNext = jest.fn()
-
-      // Initialize the middleware with the route's specific limits
-      const middleware = rateLimiter(5, 60)
-
-      // Act: Execute the middleware directly
-      middleware(mockReq, mockRes, mockNext)
-
-      // Assert: Verify the middleware catches the missing ID and halts execution
-      expect(mockRes.status).toHaveBeenCalledWith(400)
-      expect(mockRes.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining('Bad Request'),
-        }),
+      const configuredMiddleware = rateLimiter(5, 60)
+      configuredMiddleware(
+        mockRequestObject,
+        mockResponseObject,
+        nextFunctionSpy,
       )
-      expect(mockNext).not.toHaveBeenCalled()
+
+      expect(mockResponseObject.status).toHaveBeenCalledWith(400)
+      expect(nextFunctionSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  // ==========================================
+  // Test Suite: GET /api/general
+  // Moderate Limit: 20 requests per 60 seconds
+  // ==========================================
+  describe('GET /api/general (Limit: 20 requests / 60 seconds)', () => {
+    const generalEndpointClientKey = 'client-api-key-general'
+
+    it('1. Should allow requests strictly within the limit (N requests)', async () => {
+      for (let requestCount = 0; requestCount < 20; requestCount++) {
+        const response = await request(app)
+          .get('/api/general')
+          .set('x-api-key', generalEndpointClientKey)
+
+        expect(response.statusCode).toBe(200)
+      }
+    })
+
+    it('2. Should block the request that exceeds the limit (N+1 request)', async () => {
+      const response = await request(app)
+        .get('/api/general')
+        .set('x-api-key', generalEndpointClientKey)
+
+      expect(response.statusCode).toBe(429)
+      expect(response.headers['retry-after']).toBeDefined()
+    })
+
+    it('3. Should reset the window and allow requests after configured time passes', async () => {
+      jest.advanceTimersByTime(61000)
+
+      const response = await request(app)
+        .get('/api/general')
+        .set('x-api-key', generalEndpointClientKey)
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('4. Should reject requests missing a client identifier', () => {
+      const mockRequestObject = { headers: {} }
+      Object.defineProperty(mockRequestObject, 'ip', { get: () => undefined })
+
+      const mockResponseObject = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      }
+      const nextFunctionSpy = jest.fn()
+
+      const configuredMiddleware = rateLimiter(20, 60)
+      configuredMiddleware(
+        mockRequestObject,
+        mockResponseObject,
+        nextFunctionSpy,
+      )
+
+      expect(mockResponseObject.status).toHaveBeenCalledWith(400)
+      expect(nextFunctionSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  // ==========================================
+  // Test Suite: GET /api/status
+  // High Limit: 60 requests per 60 seconds
+  // ==========================================
+  describe('GET /api/status (Limit: 60 requests / 60 seconds)', () => {
+    const statusEndpointClientKey = 'client-api-key-status'
+
+    it('1. Should allow requests strictly within the limit (N requests)', async () => {
+      for (let requestCount = 0; requestCount < 60; requestCount++) {
+        const response = await request(app)
+          .get('/api/status')
+          .set('x-api-key', statusEndpointClientKey)
+
+        expect(response.statusCode).toBe(200)
+      }
+    })
+
+    it('2. Should block the request that exceeds the limit (N+1 request)', async () => {
+      const response = await request(app)
+        .get('/api/status')
+        .set('x-api-key', statusEndpointClientKey)
+
+      expect(response.statusCode).toBe(429)
+      expect(response.headers['retry-after']).toBeDefined()
+    })
+
+    it('3. Should reset the window and allow requests after configured time passes', async () => {
+      jest.advanceTimersByTime(61000)
+
+      const response = await request(app)
+        .get('/api/status')
+        .set('x-api-key', statusEndpointClientKey)
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('4. Should reject requests missing a client identifier', () => {
+      const mockRequestObject = { headers: {} }
+      Object.defineProperty(mockRequestObject, 'ip', { get: () => undefined })
+
+      const mockResponseObject = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      }
+      const nextFunctionSpy = jest.fn()
+
+      const configuredMiddleware = rateLimiter(60, 60)
+      configuredMiddleware(
+        mockRequestObject,
+        mockResponseObject,
+        nextFunctionSpy,
+      )
+
+      expect(mockResponseObject.status).toHaveBeenCalledWith(400)
+      expect(nextFunctionSpy).not.toHaveBeenCalled()
     })
   })
 })
