@@ -18,7 +18,7 @@ const apiRouter = express.Router()
  * Description: A general-purpose endpoint[cite: 2].
  * Rate Limit Policy: 20 requests per 60 seconds (minute)[cite: 2].
  */
-apiRouter.get('/general', rateLimiter(20, 60), (req, res) => {
+apiRouter.get('/general', rateLimiter(2, 60), (req, res) => {
   res.json({ message: 'OK' })
 })
 

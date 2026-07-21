@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body id="root">
+  <button id="button">
+    click on it to call api
+  </button>
+  <h2>api response</h2>
+  <p id="response">
+
+  </p>
+  <script>
+    document.getElementById('button').addEventListener('click',function(){
+
+      const responseSection=document.getElementById('response');
+
+      async function abc(){
+        try{
+          console.log("going to fetch api response")
+          const response=await fetch("http://localhost:3000/api/submit",{
+            method:'POST',
+            headers:{
+              'x-api-key': 'my-html-page', 
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        catch(error){
+          console.log("error fetching api",error);
+        }
+
+
+        console.log(response);
+        responseSection.innerHTML=`${response}`;
+      }
+      abc();
+    })
+  </script>
+
+</body>
+</html>

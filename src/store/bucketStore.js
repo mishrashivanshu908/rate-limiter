@@ -24,7 +24,7 @@ const getBucket = (clientId) => clientRateLimitStore.get(clientId)
 
 /**
  * Initializes or updates the token bucket state for a given client.
- * @param {string} clientId - The unique identifier for the client.
+ * @param {string} clientId - The unique identifier for the client.ww
  * @param {Object} bucketState - The new bucket state { tokens: number, lastRefillTime: number }.
  */
 const setBucket = (clientId, bucketState) =>

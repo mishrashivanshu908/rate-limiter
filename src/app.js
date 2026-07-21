@@ -7,10 +7,13 @@
  * Supertest for isolated unit testing without triggering EADDRINUSE port collisions.
  */
 const express = require('express')
+const cors=require('cors')
 const apiRoutes = require('./routes/api')
 
 // Initialize the Express application instance
 const app = express()
+
+app.use(cors())
 
 // ==========================================
 // Global Middleware Configuration
@@ -19,7 +22,7 @@ const app = express()
 // Automatically parse incoming requests with JSON payloads
 app.use(express.json())
 
-// ==========================================
+// ==========================================w
 // Route Registration
 // ==========================================
 
